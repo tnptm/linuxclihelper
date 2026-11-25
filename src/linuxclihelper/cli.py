@@ -5,11 +5,13 @@ import sys
 from importlib.metadata import PackageNotFoundError, version
 
 import ollama
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
+from rich.table import Table
 
-from .backend import PlannerError, generate_plan
+from .backend import PlannerError, generate_plan, list_models, resolve_model_name
 from .executor import execute_plan, is_root
 
 QUIT_WORDS = {"q", "quit", "exit", ":q", ":quit"}
@@ -42,6 +44,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Ollama server URL (default: http://localhost:11434)",
     )
     parser.add_argument(
+        "-l",
+        "--list-models",
+        action="store_true",
+        help="list available Ollama models and their sizes",
+    )
+    parser.add_argument(
         "-n",
         "--dry-run",
         action="store_true",
@@ -49,6 +57,49 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {_app_version()}")
     return parser
+
+
+def _human_size(size: int) -> str:
+    value = float(size)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if value < 1000 or unit == "TB":
+            if unit == "B":
+                return f"{int(value)} B"
+            return f"{value:.1f} {unit}"
+        value /= 1000
+    return f"{int(size)} B"
+
+
+def _handle_list_models(args: argparse.Namespace, console: Console) -> int:
+    try:
+        models = list_models(host=args.host)
+    except ollama.ResponseError as exc:
+        console.print(f"[bold red]Ollama error:[/] {exc}")
+        return 1
+    except Exception as exc:  # noqa: BLE001 - surface a friendly backend error
+        console.print(f"[bold red]Could not talk to Ollama:[/] {exc}")
+        console.print(
+            "[dim]Make sure the Ollama server is running (`ollama serve`) and reachable"
+            + (f" at {args.host}" if args.host else " at http://localhost:11434")
+            + ".[/]"
+        )
+        return 1
+
+    if not models:
+        console.print("[yellow]No models installed. Pull one with `ollama pull <model>`.[/]")
+        return 1
+
+    table = Table(
+        title="Available Ollama models",
+        box=box.SIMPLE,
+        header_style="bold cyan",
+    )
+    table.add_column("Model", style="cyan", no_wrap=True)
+    table.add_column("Size", justify="right")
+    for name, size in models:
+        table.add_row(name, _human_size(size))
+    console.print(table)
+    return 0
 
 
 def _print_banner(console: Console, args: argparse.Namespace) -> None:
@@ -68,9 +119,13 @@ def _print_banner(console: Console, args: argparse.Namespace) -> None:
 
 def _handle_task(task: str, args: argparse.Namespace, console: Console) -> int:
     console.print(f"\n[bold cyan]Task:[/] {task}")
+    selected_model = resolve_model_name(args.model, args.host)
     try:
-        with console.status("[cyan]Thinking about the commands...[/]", spinner="dots"):
-            plan, model = generate_plan(task, model=args.model, host=args.host)
+        with console.status(
+            f"[cyan]Model {selected_model} is thinking about the commands...[/]",
+            spinner="dots",
+        ):
+            plan, model = generate_plan(task, model=selected_model, host=args.host)
     except PlannerError as exc:
         console.print(f"[bold red]The model returned an unusable answer:[/] {exc}")
         return 1
@@ -113,6 +168,9 @@ def _interactive(args: argparse.Namespace, console: Console) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     console = Console()
+
+    if args.list_models:
+        return _handle_list_models(args, console)
 
     task = " ".join(args.task).strip()
     if task:

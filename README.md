@@ -76,11 +76,20 @@ The model can also be set with the `LINUXCLIHELPER_MODEL` environment variable.
 If no model is given, a model is picked automatically from those installed in
 Ollama.
 
+### List available models
+
+```bash
+uv run linuxclihelper --list-models
+```
+
+This prints every model installed in Ollama together with its size on disk.
+
 ## Options
 
 ```
 -m, --model MODEL   Ollama model to use
     --host HOST     Ollama server URL (default: http://localhost:11434)
+-l, --list-models   List available Ollama models and their sizes
 -n, --dry-run       Show commands without executing them
     --version       Show the version
 ```
