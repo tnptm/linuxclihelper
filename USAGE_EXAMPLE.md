@@ -1,23 +1,26 @@
 # USAGE EXAMPLE
 
 ## PROMPT
-What would you like to do?: tell me how many cpu cores i have on my computer, and what is the current operating frequency of them
+What would you like to do?: `tell me how many cpu cores i have on my computer, and what is the current operating frequency of them`
 
 Task: tell me how many cpu cores i have on my computer, and what is the current operating frequency of them
 
-╭─────────────────────── What this does ──────────────────────────────────────────────╮
-│ Use `nproc` for logical CPUs, `lscpu` for physical cores and current CPU MHz, and   |
-| read the kernel's per-CPU frequency files for the exact current operating frequency |
-| of each core.                                                                       │
-╰─────────────────────────────────────────────────────────────────────────────────────╯
+What this does?
+``` 
+Use `nproc` for logical CPUs, `lscpu` for physical cores and current CPU MHz, and   
+read the kernel's per-CPU frequency files for the exact current operating frequency 
+of each core.                                                                       
+```
 Proposed commands (3)
 1. Reports the number of logical CPU cores (threads) available to the OS.
-  nproc                                                                                                                                                                                                                      
+  `nproc                                                                                                                                                                                                                      
 2. Shows the CPU model, current CPU MHz, and total core count from the kernel's CPU topology data.
-  lscpu | grep -E 'Model name|CPU MHz|CPU(s):'                                                                                                                                                                               
+  `lscpu | grep -E 'Model name|CPU MHz|CPU(s):' `                                                                                                                                                                              
 3. Prints the current operating frequency in kHz for each CPU core directly from sysfs.
-  cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq                                                                                                                                                                  
+  `cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq `
 
+### Interactive output
+```
 Run command 1/3? [y/n/a/q] (n): y
 $ nproc
 22
@@ -38,3 +41,4 @@ $ cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq
 400000
 400000
 Command 3 finished successfully
+```
