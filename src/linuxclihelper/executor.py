@@ -11,6 +11,7 @@ from rich.prompt import Confirm, Prompt
 from rich.syntax import Syntax
 
 from .backend import Plan, PlannedCommand
+from .history import ExecutedCommand, HistoryStore
 
 PRIVILEGE_RE = re.compile(r"(?:^|[|&;]\s*|\s)(?:sudo|doas|su)\b")
 
@@ -108,57 +109,97 @@ def _wrap_with_sudo(command: str) -> str:
     return f"sudo bash -c {shlex.quote(command)}"
 
 
-def execute_plan(plan: Plan, model: str, console: Console, dry_run: bool = False) -> int:
+def execute_plan(
+    plan: Plan,
+    model: str,
+    console: Console,
+    dry_run: bool = False,
+    prompt: str = "",
+) -> int:
     display_plan(plan, model, console)
 
     if dry_run:
         console.print("\n[dim]Dry run: no commands were executed.[/]")
         return 0
 
+    history: HistoryStore | None = None
+    task_id: int | None = None
+    history_warned = False
+
+    def record(command: PlannedCommand, position: int, exit_code: int) -> None:
+        nonlocal history, task_id, history_warned
+        try:
+            if history is None:
+                history = HistoryStore()
+            if task_id is None:
+                task_id = history.create_task(prompt, model, plan.explanation)
+            history.add_command(
+                task_id,
+                position,
+                ExecutedCommand(
+                    command=command.command,
+                    description=command.description,
+                    requires_root=needs_root(command),
+                    exit_code=exit_code,
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 - history must never break execution
+            if not history_warned:
+                console.print(f"\n[yellow]Could not save command history: {exc}[/]")
+                history_warned = True
+
     total = len(plan.commands)
     run_all = False
 
-    for index, command in enumerate(plan.commands, start=1):
-        actual = _wrap_with_sudo(command.command) if needs_root(command) else command.command
+    try:
+        for index, command in enumerate(plan.commands, start=1):
+            actual = _wrap_with_sudo(command.command) if needs_root(command) else command.command
 
-        if not run_all:
+            if not run_all:
+                try:
+                    choice = Prompt.ask(
+                        f"\nRun command {index}/{total}?",
+                        choices=["y", "n", "a", "q"],
+                        default="n",
+                    )
+                except (EOFError, KeyboardInterrupt):
+                    console.print("\n[dim]Cancelled.[/]")
+                    return 130
+
+                if choice == "q":
+                    console.print("[dim]Stopped.[/]")
+                    return 0
+                if choice == "n":
+                    console.print(f"[dim]Skipped command {index}.[/]")
+                    continue
+                if choice == "a":
+                    run_all = True
+
+            console.print(f"[dim]$ {actual}[/]")
             try:
-                choice = Prompt.ask(
-                    f"\nRun command {index}/{total}?",
-                    choices=["y", "n", "a", "q"],
-                    default="n",
-                )
-            except (EOFError, KeyboardInterrupt):
-                console.print("\n[dim]Cancelled.[/]")
+                result = subprocess.run(actual, check=False, shell=True, executable="/bin/bash")
+            except KeyboardInterrupt:
+                console.print("\n[yellow]Interrupted.[/]")
+                record(command, index, 130)
                 return 130
 
-            if choice == "q":
-                console.print("[dim]Stopped.[/]")
-                return 0
-            if choice == "n":
-                console.print(f"[dim]Skipped command {index}.[/]")
-                continue
-            if choice == "a":
-                run_all = True
+            record(command, index, result.returncode)
 
-        console.print(f"[dim]$ {actual}[/]")
-        try:
-            result = subprocess.run(actual, check=False, shell=True, executable="/bin/bash")
-        except KeyboardInterrupt:
-            console.print("\n[yellow]Interrupted.[/]")
-            return 130
-
-        if result.returncode != 0:
-            console.print(f"[bold red]Command {index} failed with exit code {result.returncode}.[/]")
-            if index < total:
-                try:
-                    if not Confirm.ask("Continue with the remaining commands?", default=False):
-                        return result.returncode
-                except (EOFError, KeyboardInterrupt):
-                    return 130
+            if result.returncode != 0:
+                console.print(f"[bold red]Command {index} failed with exit code {result.returncode}.[/]")
+                if index < total:
+                    try:
+                        if not Confirm.ask("Continue with the remaining commands?", default=False):
+                            return result.returncode
+                    except (EOFError, KeyboardInterrupt):
+                        return 130
+                else:
+                    return result.returncode
             else:
-                return result.returncode
-        else:
-            console.print(f"[green]Command {index} finished successfully.[/]")
+                console.print(f"[green]Command {index} finished successfully.[/]")
 
-    return 0
+        return 0
+    finally:
+        if history is not None:
+            history.close()
+

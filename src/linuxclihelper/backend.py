@@ -10,6 +10,7 @@ import ollama
 
 DEFAULT_MODEL = "qwen3.5:latest"
 PREFERRED_MODELS = (
+    "mimo-2.6:latest",
     "qwen3.5:latest",
     "qwen3.5",
     "qwen2.5:14b",
@@ -53,7 +54,9 @@ Rules:
   - "description": one short line describing what that command does.
   - "requires_root": true if the command needs root privileges (writing system paths, package managers, mounting, swap, services, firewall/network config, etc.). Do not add sudo yourself; just set this flag.
 - If several commands are needed, include all of them in the correct order.
-- Prefer standard Linux tools and safe defaults.
+- Prefer standard Linux tools and safe defaults. 
+- If the user is unspecific, make reasonable assumptions.
+- If user asks clearly unsafe commands, refuse to provide them and explain why in the "explanation" field.
 - Reply with JSON only. Do not wrap it in markdown code fences and do not add prose outside the JSON object."""
 
 
