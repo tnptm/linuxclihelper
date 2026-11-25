@@ -86,6 +86,28 @@ def _model_name(entry: Any) -> str | None:
     return getattr(entry, "model", None) or getattr(entry, "name", None)
 
 
+def list_models(host: str | None = None) -> list[tuple[str, int]]:
+    client = _make_client(host)
+    response = client.list()
+    entries = (
+        response.get("models", [])
+        if isinstance(response, dict)
+        else getattr(response, "models", [])
+    )
+
+    models: list[tuple[str, int]] = []
+    for entry in entries:
+        name = _model_name(entry)
+        if not name:
+            continue
+        if isinstance(entry, dict):
+            size = entry.get("size", 0)
+        else:
+            size = getattr(entry, "size", 0)
+        models.append((name, int(size or 0)))
+    return models
+
+
 def resolve_model(client: ollama.Client, requested: str | None = None) -> str:
     if requested:
         return requested
@@ -191,6 +213,10 @@ def _chat(client: ollama.Client, model: str, task: str, response_format: Any) ->
         options={"temperature": 0},
     )
     return _message_content(response)
+
+
+def resolve_model_name(requested: str | None = None, host: str | None = None) -> str:
+    return resolve_model(_make_client(host), requested)
 
 
 def generate_plan(
