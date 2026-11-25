@@ -84,12 +84,26 @@ uv run linuxclihelper --list-models
 
 This prints every model installed in Ollama together with its size on disk.
 
+### History
+
+Executed commands are saved to a SQLite database. Cancelled and skipped
+commands are not saved. `--history` lists the last commands that were actually
+run, along with the prompt, solution summary, and exit code:
+
+```bash
+uv run linuxclihelper --history [N]
+```
+
+The database lives in `$XDG_DATA_HOME/linuxclihelper/history.db` (or
+`$LINUXCLIHELPER_DB` if set).
+
 ## Options
 
 ```
 -m, --model MODEL   Ollama model to use
     --host HOST     Ollama server URL (default: http://localhost:11434)
 -l, --list-models   List available Ollama models and their sizes
+-H, --history [N]   List the last N executed commands (default 10)
 -n, --dry-run       Show commands without executing them
     --version       Show the version
 ```
