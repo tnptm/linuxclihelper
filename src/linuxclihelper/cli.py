@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import datetime
 from importlib.metadata import PackageNotFoundError, version
 
 import ollama
@@ -13,6 +14,7 @@ from rich.table import Table
 
 from .backend import PlannerError, generate_plan, list_models, resolve_model_name
 from .executor import execute_plan, is_root
+from .history import DEFAULT_HISTORY_LIMIT, HistoryStore
 
 QUIT_WORDS = {"q", "quit", "exit", ":q", ":quit"}
 
@@ -50,6 +52,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="list available Ollama models and their sizes",
     )
     parser.add_argument(
+        "-H",
+        "--history",
+        nargs="?",
+        const=DEFAULT_HISTORY_LIMIT,
+        type=int,
+        metavar="N",
+        help=f"list the last N executed commands (default {DEFAULT_HISTORY_LIMIT})",
+    )
+    parser.add_argument(
         "-n",
         "--dry-run",
         action="store_true",
@@ -68,6 +79,13 @@ def _human_size(size: int) -> str:
             return f"{value:.1f} {unit}"
         value /= 1000
     return f"{int(size)} B"
+
+
+def _format_timestamp(value: str) -> str:
+    try:
+        return datetime.fromisoformat(value).strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return value
 
 
 def _handle_list_models(args: argparse.Namespace, console: Console) -> int:
@@ -117,6 +135,46 @@ def _print_banner(console: Console, args: argparse.Namespace) -> None:
     )
 
 
+def _handle_history(args: argparse.Namespace, console: Console) -> int:
+    limit = args.history
+    if limit is None:
+        limit = DEFAULT_HISTORY_LIMIT
+    if limit <= 0:
+        console.print("[bold red]The history limit must be a positive number.[/]")
+        return 2
+
+    try:
+        with HistoryStore() as store:
+            entries = store.recent_commands(limit)
+    except Exception as exc:  # noqa: BLE001 - surface a friendly history error
+        console.print(f"[bold red]Could not read the history database: {exc}[/]")
+        return 1
+
+    if not entries:
+        console.print("[yellow]No executed commands in history yet.[/]")
+        return 0
+
+    table = Table(
+        title=f"Last {len(entries)} executed command(s)",
+        box=box.SIMPLE,
+        header_style="bold cyan",
+    )
+    table.add_column("When", no_wrap=True)
+    table.add_column("Prompt", overflow="fold", max_width=34)
+    table.add_column("Command", style="green", overflow="fold")
+    table.add_column("Exit", justify="right")
+    for entry in entries:
+        exit_style = "green" if entry.exit_code == 0 else "red"
+        table.add_row(
+            _format_timestamp(entry.executed_at),
+            entry.prompt,
+            entry.command,
+            f"[{exit_style}]{entry.exit_code}[/{exit_style}]",
+        )
+    console.print(table)
+    return 0
+
+
 def _handle_task(task: str, args: argparse.Namespace, console: Console) -> int:
     console.print(f"\n[bold cyan]Task:[/] {task}")
     selected_model = resolve_model_name(args.model, args.host)
@@ -143,7 +201,13 @@ def _handle_task(task: str, args: argparse.Namespace, console: Console) -> int:
         )
         return 1
 
-    return execute_plan(plan, model, console, dry_run=args.dry_run)
+    return execute_plan(
+        plan,
+        model,
+        console,
+        dry_run=args.dry_run,
+        prompt=task,
+    )
 
 
 def _interactive(args: argparse.Namespace, console: Console) -> int:
@@ -171,6 +235,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.list_models:
         return _handle_list_models(args, console)
+
+    if args.history is not None:
+        return _handle_history(args, console)
 
     task = " ".join(args.task).strip()
     if task:
