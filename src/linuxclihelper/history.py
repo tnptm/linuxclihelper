@@ -83,15 +83,15 @@ class HistoryEntry:
 
 @dataclass(frozen=True)
 class Recommendation:
-    id: int
-    position: int
-    created_at: str
-    prompt: str
-    model: str
-    explanation: str
-    command: str
-    description: str
-    requires_root: bool
+    id: int = 0
+    position: int = 0
+    created_at: str = ""
+    prompt: str = ""
+    model: str = ""
+    explanation: str = ""
+    command: str = ""
+    description: str = ""
+    requires_root: bool = False
 
 
 class HistoryStore:

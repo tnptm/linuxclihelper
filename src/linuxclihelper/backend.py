@@ -8,7 +8,6 @@ from typing import Any
 
 import ollama
 
-
 PLAN_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -73,14 +72,6 @@ class Recommendation:
             self.command = self.command[0]
             self.description = self.command[1] if len(self.command) > 1 else ""
             self.requires_root = bool(self.command[2]) if len(self.command) > 2 else False
-
-
-@dataclass
-class ExecutedCommand:
-    command: str
-    description: str = ""
-    requires_root: bool = False
-    exit_code: int = 0
 
 
 @dataclass
