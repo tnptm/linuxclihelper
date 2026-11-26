@@ -118,10 +118,6 @@ def execute_plan(
 ) -> int:
     display_plan(plan, model, console)
 
-    if dry_run:
-        console.print("\n[dim]Dry run: no commands were executed.[/]")
-        return 0
-
     history: HistoryStore | None = None
     task_id: int | None = None
     history_warned = False
@@ -152,6 +148,19 @@ def execute_plan(
     run_all = False
 
     try:
+        try:
+            history = HistoryStore()
+            task_id = history.create_task(prompt, model, plan.explanation)
+            for index, command in enumerate(plan.commands, start=1):
+                history.add_recommendation(task_id, index, command)
+        except Exception as exc:  # noqa: BLE001 - history must never break execution
+            console.print(f"\n[yellow]Could not save command history: {exc}[/]")
+            history_warned = True
+
+        if dry_run:
+            console.print("\n[dim]Dry run: no commands were executed.[/]")
+            return 0
+
         for index, command in enumerate(plan.commands, start=1):
             actual = _wrap_with_sudo(command.command) if needs_root(command) else command.command
 

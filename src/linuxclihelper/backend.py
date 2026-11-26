@@ -9,8 +9,6 @@ from typing import Any
 import ollama
 
 
-
-
 PLAN_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -62,6 +60,35 @@ class PlannedCommand:
 class Plan:
     explanation: str
     commands: list[PlannedCommand] = field(default_factory=list)
+
+
+@dataclass
+class Recommendation:
+    command: str
+    description: str = ""
+    requires_root: bool = False
+
+    def __post_init__(self) -> None:
+        if isinstance(self.command, (tuple, list)):
+            self.command = self.command[0]
+            self.description = self.command[1] if len(self.command) > 1 else ""
+            self.requires_root = bool(self.command[2]) if len(self.command) > 2 else False
+
+
+@dataclass
+class ExecutedCommand:
+    command: str
+    description: str = ""
+    requires_root: bool = False
+    exit_code: int = 0
+
+
+@dataclass
+class ExecutedCommand:
+    command: str
+    description: str = ""
+    requires_root: bool = False
+    exit_code: int = 0
 
 
 class PlannerError(RuntimeError):
@@ -119,14 +146,11 @@ def resolve_model(client: ollama.Client, requested: str | None = None) -> str:
         )
         available = [name for name in (_model_name(e) for e in entries) if name]
     except Exception:  # noqa: BLE001 - model discovery is best effort
-        return DEFAULT_MODEL
+        return get_default_model()
 
     if not available:
-        return DEFAULT_MODEL
+        return get_default_model()
 
-    for preferred in PREFERRED_MODELS:
-        if preferred in available:
-            return preferred
     return available[0]
 
 
@@ -262,8 +286,6 @@ def get_default_model() -> str:
 
 
 
-PREFERRED_MODELS = get_preferred_models()
-DEFAULT_MODEL = get_default_model() #"qwen3.5:latest"
 """ hard coded preferred models for reference (
     "mimo-2.6:latest",
     "qwen3.5:latest",
