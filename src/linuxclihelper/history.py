@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Self
 
+from .backend import PlannedCommand
+
 DB_ENV_VAR = "LINUXCLIHELPER_DB"
 DEFAULT_HISTORY_LIMIT = 10
 
@@ -17,6 +19,15 @@ CREATE TABLE IF NOT EXISTS tasks (
     prompt TEXT NOT NULL,
     model TEXT NOT NULL,
     summary TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS recommendations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    command TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    requires_root INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS commands (
@@ -31,6 +42,7 @@ CREATE TABLE IF NOT EXISTS commands (
 );
 
 CREATE INDEX IF NOT EXISTS idx_commands_id ON commands(id DESC);
+CREATE INDEX IF NOT EXISTS idx_recommendations_id ON recommendations(id DESC);
 """
 
 
@@ -67,6 +79,19 @@ class HistoryEntry:
     description: str
     requires_root: bool
     exit_code: int
+
+
+@dataclass(frozen=True)
+class Recommendation:
+    id: int = 0
+    position: int = 0
+    created_at: str = ""
+    prompt: str = ""
+    model: str = ""
+    explanation: str = ""
+    command: str = ""
+    description: str = ""
+    requires_root: bool = False
 
 
 class HistoryStore:
@@ -146,3 +171,43 @@ class HistoryStore:
             )
             for row in rows
         ]
+
+    def recent_recommendations(self, limit: int = DEFAULT_HISTORY_LIMIT) -> list[Recommendation]:
+        rows = self._connection.execute(
+            """
+            SELECT r.id, r.position, r.command, r.description, r.requires_root,
+                   t.prompt, t.model, t.summary, t.created_at
+            FROM recommendations AS r
+            JOIN tasks AS t ON t.id = r.task_id
+            ORDER BY r.id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+
+        return [
+            Recommendation(
+                id=int(row["id"]),
+                position=int(row["position"]),
+                created_at=str(row["created_at"]),
+                prompt=str(row["prompt"]),
+                model=str(row["model"]),
+                explanation=str(row["summary"]),
+                command=str(row["command"]),
+                description=str(row["description"]),
+                requires_root=bool(row["requires_root"]),
+            )
+            for row in rows
+        ]
+
+    def add_recommendation(
+        self, task_id: int, position: int, command: PlannedCommand
+    ) -> None:
+        self._connection.execute(
+            """
+            INSERT INTO recommendations (task_id, position, command, description, requires_root)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (task_id, position, command.command, command.description, int(command.requires_root)),
+        )
+        self._connection.commit()

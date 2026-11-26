@@ -8,19 +8,6 @@ from typing import Any
 
 import ollama
 
-DEFAULT_MODEL = "qwen3.5:latest"
-PREFERRED_MODELS = (
-    "mimo-2.6:latest",
-    "qwen3.5:latest",
-    "qwen3.5",
-    "qwen2.5:14b",
-    "qwen2.5:7b",
-    "llama3.2:latest",
-    "llama3.1:8b",
-    "mistral:latest",
-    "mistral",
-)
-
 PLAN_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -72,6 +59,27 @@ class PlannedCommand:
 class Plan:
     explanation: str
     commands: list[PlannedCommand] = field(default_factory=list)
+
+
+@dataclass
+class Recommendation:
+    command: str
+    description: str = ""
+    requires_root: bool = False
+
+    def __post_init__(self) -> None:
+        if isinstance(self.command, (tuple, list)):
+            self.command = self.command[0]
+            self.description = self.command[1] if len(self.command) > 1 else ""
+            self.requires_root = bool(self.command[2]) if len(self.command) > 2 else False
+
+
+@dataclass
+class ExecutedCommand:
+    command: str
+    description: str = ""
+    requires_root: bool = False
+    exit_code: int = 0
 
 
 class PlannerError(RuntimeError):
@@ -129,14 +137,11 @@ def resolve_model(client: ollama.Client, requested: str | None = None) -> str:
         )
         available = [name for name in (_model_name(e) for e in entries) if name]
     except Exception:  # noqa: BLE001 - model discovery is best effort
-        return DEFAULT_MODEL
+        return get_default_model()
 
     if not available:
-        return DEFAULT_MODEL
+        return get_default_model()
 
-    for preferred in PREFERRED_MODELS:
-        if preferred in available:
-            return preferred
     return available[0]
 
 
@@ -242,3 +247,44 @@ def generate_plan(
         plan = _parse_plan(content)
 
     return plan, selected_model
+
+def get_preferred_models() -> list[str]:
+    """Generate list of the preferred models from currently available models.
+    Ask from ollama for the list of available models.
+    Returns a list of preferred models that are available.
+    """
+    available_models = [name for name, _ in list_models()]
+    return available_models
+
+def get_default_model() -> str:
+    """Ask from ollama if there is a currently active model in memory and return it.
+    If no active model is found, return the first preferred model that is available.
+    If no preferred models are available, tell the user that no suitable model could be found.
+    """
+    client = _make_client(None)
+    response = client.list()
+    active_model = None
+    if isinstance(response, dict):
+        active_model = response.get("active_model")
+    else:
+        active_model = getattr(response, "active_model", None)
+    if active_model:
+        return active_model
+    preferred_models = get_preferred_models()
+    if preferred_models:
+        return preferred_models[0]
+    raise RuntimeError("No suitable model could be found. You need to install one with 'ollama pull' command.")
+
+
+
+""" hard coded preferred models for reference (
+    "mimo-2.6:latest",
+    "qwen3.5:latest",
+    "qwen3.5",
+    "qwen2.5:14b",
+    "qwen2.5:7b",
+    "llama3.2:latest",
+    "llama3.1:8b",
+    "mistral:latest",
+    "mistral",
+)"""

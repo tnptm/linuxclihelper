@@ -1,6 +1,6 @@
 [project]
 name = "linuxclihelper"
-version = "0.1.0"
+version = "0.1.2"
 description = "Turn plain-English Linux tasks into explained, permission-gated shell commands using Ollama"
 readme = "README.md"
 authors = [
@@ -18,3 +18,8 @@ linuxclihelper = "linuxclihelper:main"
 [build-system]
 requires = ["uv_build>=0.13.8,<0.14.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.6",
+]
