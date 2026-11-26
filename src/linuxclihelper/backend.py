@@ -57,6 +57,7 @@ Rules:
 - Prefer standard Linux tools and safe defaults. 
 - If the user is unspecific, make reasonable assumptions.
 - If user asks clearly unsafe commands, refuse to provide them and explain why in the "explanation" field.
+- If the task is not related to Linux command-line operations, refuse to provide commands and explain why in the "explanation" field.
 - Reply with JSON only. Do not wrap it in markdown code fences and do not add prose outside the JSON object."""
 
 
