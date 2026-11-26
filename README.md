@@ -87,15 +87,27 @@ This prints every model installed in Ollama together with its size on disk.
 ### History
 
 Executed commands are saved to a SQLite database. Cancelled and skipped
-commands are not saved. `--history` lists the last commands that were actually
-run, along with the prompt, solution summary, and exit code:
+commands are not saved as executed commands. `--history` (`-H`) lists only the
+last commands actually run, newest first:
 
 ```bash
-uv run linuxclihelper --history [N]
+uv run linuxclihelper -H [N]
+```
+
+`--history-long` (`-Hl`) lists those executed commands together with their
+original prompts, AI explanations, execution times, and exit codes:
+
+```bash
+uv run linuxclihelper -Hl [N]
 ```
 
 The database lives in `$XDG_DATA_HOME/linuxclihelper/history.db` (or
-`$LINUXCLIHELPER_DB` if set).
+`$LINUXCLIHELPER_DB` if set). Proposed commands, including skipped and dry-run
+commands, are also saved as recommendations. Use `-R` to see their AI answers:
+
+```bash
+uv run linuxclihelper -R [N]
+```
 
 ## Options
 
@@ -104,6 +116,8 @@ The database lives in `$XDG_DATA_HOME/linuxclihelper/history.db` (or
     --host HOST     Ollama server URL (default: http://localhost:11434)
 -l, --list-models   List available Ollama models and their sizes
 -H, --history [N]   List the last N executed commands (default 10)
+-Hl, --history-long [N]  List executed commands with their explanations (default 10)
+-R, --recommendations [N]  List the last N AI answers (default 10)
 -n, --dry-run       Show commands without executing them
     --version       Show the version
 ```

@@ -11,6 +11,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
+from rich.text import Text
 
 from .backend import PlannerError, generate_plan, list_models, resolve_model_name
 from .executor import execute_plan, is_root
@@ -58,7 +59,25 @@ def _build_parser() -> argparse.ArgumentParser:
         const=DEFAULT_HISTORY_LIMIT,
         type=int,
         metavar="N",
-        help=f"list the last N executed commands (default {DEFAULT_HISTORY_LIMIT})",
+        help="list the last N executed commands (default 10)",
+    )
+    parser.add_argument(
+        "-R",
+        "--recommendations",
+        nargs="?",
+        const=DEFAULT_HISTORY_LIMIT,
+        type=int,
+        metavar="N",
+        help="list the last N AI answers (default 10)",
+    )
+    parser.add_argument(
+        "-Hl",
+        "--history-long",
+        nargs="?",
+        const=DEFAULT_HISTORY_LIMIT,
+        type=int,
+        metavar="N",
+        help="list the last N executed commands with their explanations (default 10)",
     )
     parser.add_argument(
         "-n",
@@ -135,10 +154,7 @@ def _print_banner(console: Console, args: argparse.Namespace) -> None:
     )
 
 
-def _handle_history(args: argparse.Namespace, console: Console) -> int:
-    limit = args.history
-    if limit is None:
-        limit = DEFAULT_HISTORY_LIMIT
+def _handle_history(limit: int, console: Console, *, long: bool = False) -> int:
     if limit <= 0:
         console.print("[bold red]The history limit must be a positive number.[/]")
         return 2
@@ -154,22 +170,63 @@ def _handle_history(args: argparse.Namespace, console: Console) -> int:
         console.print("[yellow]No executed commands in history yet.[/]")
         return 0
 
+    if not long:
+        for entry in entries:
+            console.print(entry.command, markup=False, highlight=False, soft_wrap=True)
+        return 0
+
+    table = Table(title=f"Last {len(entries)} executed command(s)", box=box.SIMPLE)
+    table.add_column("When", no_wrap=True)
+    table.add_column("Prompt", overflow="fold")
+    table.add_column("Command", overflow="fold")
+    table.add_column("Explanation", overflow="fold")
+    table.add_column("Exit", justify="right")
+    for entry in entries:
+        table.add_row(
+            _format_timestamp(entry.executed_at),
+            Text(entry.prompt),
+            Text(entry.command),
+            Text(entry.summary),
+            str(entry.exit_code),
+        )
+    console.print(table)
+    return 0
+
+
+def _handle_recommendations(args: argparse.Namespace, console: Console) -> int:
+    limit = args.recommendations
+    if limit is None:
+        limit = DEFAULT_HISTORY_LIMIT
+    if limit <= 0:
+        console.print("[bold red]The history limit must be a positive number.[/]")
+        return 2
+
+    try:
+        with HistoryStore() as store:
+            recommendations = store.recent_recommendations(limit)
+    except Exception as exc:  # noqa: BLE001 - surface a friendly history error
+        console.print(f"[bold red]Could not read the history database: {exc}[/]")
+        return 1
+
+    if not recommendations:
+        console.print("[yellow]No recommendations in history yet.[/]")
+        return 0
+
     table = Table(
-        title=f"Last {len(entries)} executed command(s)",
+        title=f"Last {len(recommendations)} AI answer(s) - 'What it does?'",
         box=box.SIMPLE,
         header_style="bold cyan",
     )
     table.add_column("When", no_wrap=True)
     table.add_column("Prompt", overflow="fold", max_width=34)
-    table.add_column("Command", style="green", overflow="fold")
-    table.add_column("Exit", justify="right")
-    for entry in entries:
-        exit_style = "green" if entry.exit_code == 0 else "red"
+    table.add_column("Model", overflow="fold")
+    table.add_column("Recommendation", style="green", overflow="fold")
+    for entry in recommendations:
         table.add_row(
-            _format_timestamp(entry.executed_at),
-            entry.prompt,
-            entry.command,
-            f"[{exit_style}]{entry.exit_code}[/{exit_style}]",
+            _format_timestamp(entry.created_at),
+            Text(entry.prompt),
+            Text(entry.model),
+            Text(entry.explanation),
         )
     console.print(table)
     return 0
@@ -177,8 +234,8 @@ def _handle_history(args: argparse.Namespace, console: Console) -> int:
 
 def _handle_task(task: str, args: argparse.Namespace, console: Console) -> int:
     console.print(f"\n[bold cyan]Task:[/] {task}")
-    selected_model = resolve_model_name(args.model, args.host)
     try:
+        selected_model = resolve_model_name(args.model, args.host)
         with console.status(
             f"[cyan]Model {selected_model} is thinking about the commands...[/]",
             spinner="dots",
@@ -237,7 +294,13 @@ def main(argv: list[str] | None = None) -> int:
         return _handle_list_models(args, console)
 
     if args.history is not None:
-        return _handle_history(args, console)
+        return _handle_history(args.history, console)
+
+    if args.recommendations is not None:
+        return _handle_recommendations(args, console)
+
+    if args.history_long is not None:
+        return _handle_history(args.history_long, console, long=True)
 
     task = " ".join(args.task).strip()
     if task:
