@@ -1,4 +1,4 @@
-# linuxclihelper
+# linuxclihelper - AI for Linux Commands
 
 Ask for a Linux task in plain English and get an explanation plus ready-to-run
 shell commands. Commands are only executed after you approve them, and commands
