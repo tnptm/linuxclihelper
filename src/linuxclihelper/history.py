@@ -126,7 +126,7 @@ class HistoryStore:
                    t.prompt, t.model, t.summary
             FROM commands AS c
             JOIN tasks AS t ON t.id = c.task_id
-            ORDER BY c.id DESC
+            ORDER BY c.id ASC
             LIMIT ?
             """,
             (limit,),
